@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OTP Retrieval</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --muted: #94a3b8;
+        --text: #e2e8f0;
+        --accent: #38bdf8;
+        --ok: #22c55e;
+        --err: #f87171;
+        --border: #334155;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 48px 16px;
+      }
+      .wrap { width: 100%; max-width: 460px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 22px;
+      }
+      label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+      input, select {
+        width: 100%;
+        padding: 11px 12px;
+        border-radius: 9px;
+        border: 1px solid var(--border);
+        background: #0b1220;
+        color: var(--text);
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+      input:focus, select:focus { outline: none; border-color: var(--accent); }
+      button {
+        width: 100%;
+        padding: 12px;
+        border: 0;
+        border-radius: 9px;
+        background: var(--accent);
+        color: #06212e;
+        font-weight: 600;
+        font-size: 15px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: default; }
+      .hint { font-size: 12px; color: var(--muted); margin: -8px 0 16px; }
+      .result { margin-top: 20px; }
+      .status { text-align: center; color: var(--muted); font-size: 14px; padding: 10px 0; }
+      .code-box {
+        background: #0b1220;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+      }
+      .code {
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: 8px;
+        font-variant-numeric: tabular-nums;
+        color: #fff;
+        cursor: pointer;
+        user-select: all;
+      }
+      .meta { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.7; word-break: break-word; }
+      .copy { margin-top: 14px; background: #0b1220; color: var(--accent); border: 1px solid var(--border); }
+      .err { color: var(--err); text-align: center; padding: 12px 0; }
+      .hsum { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+      .hrow { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; word-break: break-all; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+      .dot.ok { background: var(--ok); }
+      .dot.auth_failed { background: #fbbf24; }
+      .dot.error { background: var(--err); }
+      .hrow .htag { color: var(--muted); font-size: 11px; margin-left: auto; }
+      .spinner {
+        width: 16px; height: 16px; display: inline-block; vertical-align: -3px;
+        border: 2px solid var(--border); border-top-color: var(--accent);
+        border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>OTP Retrieval</h1>
+      <p class="sub">Pick a mailbox and pull the latest verification code.</p>
+
+      <div class="card">
+        <form id="form">
+          <label for="email">Account email</label>
+          <select id="email" required>
+            <option value="" disabled selected>Select an account…</option>
+          </select>
+
+          <label for="provider">Provider</label>
+          <select id="provider" required>
+            <option value="" disabled selected>Select a provider…</option>
+          </select>
+          <p class="hint">The service that sent the code (ChatGPT, Canva, Spotify…).</p>
+
+          <button id="submit" type="submit">Get OTP</button>
+        </form>
+
+        <div class="result" id="result" hidden></div>
+      </div>
+
+      <div class="card" style="margin-top: 16px">
+        <div style="font-size: 14px">Account health</div>
+        <div class="hint" style="margin: 2px 0 12px">Check whether a mailbox's credentials are alive.</div>
+
+        <label for="healthEmail">Account email</label>
+        <select id="healthEmail">
+          <option value="" disabled selected>Select an account…</option>
+        </select>
+        <button id="healthBtn" type="button">Check</button>
+
+        <div id="healthResult" style="margin-top: 12px"></div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("form");
+      const emailInput = document.getElementById("email");
+      const providerSelect = document.getElementById("provider");
+      const submitBtn = document.getElementById("submit");
+      const resultEl = document.getElementById("result");
+
+      // Populate the account dropdowns (main lookup + health check).
+      const healthEmailSelect = document.getElementById("healthEmail");
+      fetch("/accounts")
+        .then((r) => r.json())
+        .then((d) => {
+          for (const email of d.accounts || []) {
+            for (const select of [emailInput, healthEmailSelect]) {
+              const opt = document.createElement("option");
+              opt.value = email;
+              opt.textContent = email;
+              select.appendChild(opt);
+            }
+          }
+        })
+        .catch(() => {});
+
+      // Populate the provider dropdown.
+      fetch("/providers")
+        .then((r) => r.json())
+        .then((d) => {
+          for (const p of d.providers || []) {
+            const opt = document.createElement("option");
+            opt.value = p.name;
+            opt.textContent = p.label;
+            providerSelect.appendChild(opt);
+          }
+        })
+        .catch(() => {});
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        run();
+      });
+
+      // One check per click — if no code is found, the user just clicks again.
+      async function run() {
+        const email = emailInput.value.trim();
+        const provider = providerSelect.value;
+        if (!email || !provider) {
+          showError("Pick both an account email and a provider.");
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Checking…";
+        showChecking();
+
+        const url = "/otp/" + encodeURIComponent(email) + "?provider=" + encodeURIComponent(provider);
+
+        try {
+          const res = await fetch(url, { headers: { "X-Requester": "web-ui" } });
+          const body = await res.json();
+          if (res.ok) {
+            showCode(body);
+          } else if (res.status === 404 && /No matching OTP/i.test(body.error || "")) {
+            showError("No code found yet. Click again once the email has arrived.");
+          } else {
+            showError(body.error || "Server error.");
+          }
+        } catch (err) {
+          showError("Network error contacting the server.");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Get OTP";
+        }
+      }
+
+      function showChecking() {
+        resultEl.dataset.state = "checking";
+        resultEl.hidden = false;
+        resultEl.innerHTML = '<div class="status"><span class="spinner"></span>Checking…</div>';
+      }
+
+      function showCode(body) {
+        resultEl.dataset.state = "done";
+        resultEl.hidden = false;
+        const ago = timeAgo(new Date(body.receivedAt));
+        resultEl.innerHTML =
+          '<div class="code-box">' +
+          '<div class="code" id="code" title="Click to select">' +
+          escapeHtml(body.code) +
+          "</div>" +
+          '<div class="meta">' +
+          "From: " + escapeHtml(body.from || "—") + "<br/>" +
+          "Subject: " + escapeHtml(body.subject || "—") + "<br/>" +
+          "Received: " + ago +
+          "</div>" +
+          '<button class="copy" id="copy" type="button">Copy code</button>' +
+          "</div>";
+        document.getElementById("copy").addEventListener("click", () => {
+          navigator.clipboard.writeText(body.code).then(() => {
+            const b = document.getElementById("copy");
+            b.textContent = "Copied ✓";
+            setTimeout(() => (b.textContent = "Copy code"), 1500);
+          });
+        });
+      }
+
+      function showError(msg) {
+        resultEl.dataset.state = "error";
+        resultEl.hidden = false;
+        resultEl.innerHTML = '<div class="err">' + escapeHtml(msg) + "</div>";
+      }
+
+      // Account health widget — checks one selected account.
+      const healthBtn = document.getElementById("healthBtn");
+      const healthResult = document.getElementById("healthResult");
+      healthBtn.addEventListener("click", async () => {
+        const email = healthEmailSelect.value;
+        if (!email) {
+          healthResult.innerHTML = '<div class="err">Pick an account to check.</div>';
+          return;
+        }
+        healthBtn.disabled = true;
+        healthBtn.textContent = "Checking…";
+        healthResult.innerHTML = '<div class="status"><span class="spinner"></span>Checking…</div>';
+        try {
+          const res = await fetch("/accounts/" + encodeURIComponent(email) + "/health");
+          const a = await res.json();
+          if (!res.ok) {
+            healthResult.innerHTML = '<div class="err">' + escapeHtml(a.error || "Check failed.") + "</div>";
+            return;
+          }
+          let html =
+            '<div class="hrow">' +
+            '<span class="dot ' + a.status + '"></span>' +
+            "<span>" + escapeHtml(a.email) + "</span>" +
+            '<span class="htag">' + escapeHtml(a.authType) + " · " + escapeHtml(a.status) + "</span>" +
+            "</div>";
+          if (a.error) {
+            html += '<div class="hint" style="margin-top:6px">' + escapeHtml(a.error) + "</div>";
+          }
+          healthResult.innerHTML = html;
+        } catch (err) {
+          healthResult.innerHTML = '<div class="err">Could not reach the server.</div>';
+        } finally {
+          healthBtn.disabled = false;
+          healthBtn.textContent = "Check";
+        }
+      });
+
+      function timeAgo(date) {
+        const s = Math.round((Date.now() - date.getTime()) / 1000);
+        if (s < 60) return s + "s ago";
+        const m = Math.round(s / 60);
+        return m + " min ago";
+      }
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]),
+        );
+      }
+    </script>
+  </body>
+</html>

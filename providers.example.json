@@ -1,0 +1,34 @@
+[
+  {
+    "name": "chatgpt",
+    "label": "ChatGPT / OpenAI",
+    "senderPattern": "noreply@tm\\.openai\\.com|ChatGPT",
+    "imapFrom": "tm.openai.com",
+    "imapSubject": ["login code", "verification code"],
+    "otpRegex": "code to continue[^0-9]{0,40}(\\d{4,8})"
+  },
+  {
+    "name": "canva",
+    "label": "Canva",
+    "senderPattern": "no-?reply@account\\.canva\\.com",
+    "imapFrom": "account.canva.com",
+    "imapSubject": ["Kode masuk", "login code", "verification code"],
+    "otpRegex": "Kode masuk[^0-9]{0,20}(\\d{4,8})"
+  },
+  {
+    "name": "spotify",
+    "label": "Spotify",
+    "senderPattern": "no-?reply@alerts\\.spotify\\.com",
+    "imapFrom": "alerts.spotify.com",
+    "imapSubject": ["Kode masuk", "login code", "verification code"],
+    "otpRegex": "Kode masuk[^0-9]{0,20}(\\d{4,8})"
+  },
+  {
+    "name": "freepik",
+    "label": "Freepik / Magnific",
+    "senderPattern": "info@magnific\\.com",
+    "imapFrom": "info@magnific.com",
+    "imapSubject": ["authentication code", "verification code"],
+    "otpRegex": "minutes only[^0-9]{0,15}(\\d{4,8})"
+  }
+]

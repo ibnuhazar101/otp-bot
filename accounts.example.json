@@ -1,0 +1,31 @@
+[
+  {
+    "_comment": "Gmail — app password. Host is auto-detected from the domain.",
+    "email": "test.account1@gmail.com",
+    "appPassword": "abcd efgh ijkl mnop"
+  },
+  {
+    "_comment": "Custom .xyz domain on a generic IMAP host with basic auth. Provide imapHost (and imapPort if not 993).",
+    "email": "user@mydomain.xyz",
+    "appPassword": "the-mailbox-password-or-app-password",
+    "imapHost": "mail.mydomain.xyz",
+    "imapPort": 993
+  },
+  {
+    "_comment": "Outlook / personal Microsoft — read via Microsoft Graph (OAuth2 Mail.Read). Auto-detected: transport=graph. Register an Azure app, add the Graph Mail.Read delegated permission, then run: CLIENT_ID=<id> TENANT=common npm run outlook-auth  to get the refreshToken. See README 'Outlook setup'.",
+    "email": "user@outlook.com",
+    "authType": "oauth2",
+    "oauth": {
+      "clientId": "your-azure-app-client-id",
+      "clientSecret": "optional-if-confidential-client",
+      "refreshToken": "the-refresh-token-from-consent",
+      "tenant": "common"
+    }
+  },
+  {
+    "_comment": "Outlook shortcut for testing: paste a raw access token instead of refresh creds (expires in ~1h).",
+    "email": "user2@outlook.com",
+    "authType": "oauth2",
+    "accessToken": "a-short-lived-access-token"
+  }
+]
