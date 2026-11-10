@@ -21,7 +21,7 @@ and having an admin open each one to read codes by hand.
 Browser (pick email + provider)
         │  GET /otp/:email?provider=chatgpt
         ▼
-   Express API ───────────► OtpFetcher (on demand)
+   Express API ─────────────► OtpFetcher (on demand)
                                  │  1. connect to the mailbox (warm-cached)
                                  │  2. IMAP SEARCH by sender (+ subject)
                                  │  3. download newest FETCH_LIMIT matches
