@@ -98,7 +98,6 @@ export class GraphClient {
           transport: "graph",
           scanned,
           result: "hit",
-          code,
         });
         return {
           status: "ok",
