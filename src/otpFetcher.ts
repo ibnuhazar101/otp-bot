@@ -266,7 +266,6 @@ export class OtpFetcher {
         provider: provider.name,
         scanned,
         result: "hit",
-        code: best.code,
         receivedAt: new Date(best.receivedAt).toISOString(),
       });
       return {

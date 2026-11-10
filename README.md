@@ -10,7 +10,7 @@ a one-page web UI.
 It replaces the manual process of keeping a separate browser profile per email
 and having an admin open each one to read codes by hand.
 
-> ⚠️ **Prototype.** No database, no queue, and **no auth on the REST endpoint**.
+> ⚠️ **Prototype.** No database and no queue. The REST API is protected by an API key (`API_KEY` in `.env`) and rate-limited; it still binds to `127.0.0.1` by default.
 > Run it only on a trusted network with test accounts.
 
 ---
@@ -174,7 +174,7 @@ The **Account health** widget shows which credentials are alive.
 **Example**
 
 ```bash
-curl "http://localhost:3000/otp/you@gmail.com?provider=chatgpt"
+curl -H "Authorization: Bearer $API_KEY" "http://localhost:3000/otp/you@gmail.com?provider=chatgpt"
 ```
 
 ```json
@@ -190,8 +190,8 @@ curl "http://localhost:3000/otp/you@gmail.com?provider=chatgpt"
 ```
 
 `404` when no matching OTP is found; `400` for a missing/unknown provider;
-`502` for auth/upstream failures. Pass an `X-Requester` header to tag who's
-asking (logged with each request).
+`502` for auth/upstream failures, `401` for a missing/invalid API key, `429` when rate-limited.
+The `requester` field in logs is the authenticated key's id (first 8 hex chars of its SHA-256), not a client-supplied header.
 
 ---
 
@@ -199,9 +199,13 @@ asking (logged with each request).
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `HOST` / `PORT` | `0.0.0.0` / `3000` | API bind address. |
+| `HOST` / `PORT` | `127.0.0.1` / `3000` | API bind address. Use `0.0.0.0` only behind a proxy/firewall. |
+| `API_KEY` / `API_KEYS` | – (**required**) | API key(s), comma separated, ≥16 chars. `openssl rand -hex 32`. Sent as `Authorization: Bearer …` or `X-API-Key`. |
+| `TRUST_PROXY` | unset | Reverse-proxy hop count so rate limits use the real client IP. |
+| `OTP_RATE_LIMIT_PER_MIN` | `30` | OTP lookups per key per minute (health: 6/min, global: 120/min/IP, failed auth: 10/min/IP). |
+| `AUTH_DISABLED` | `false` | Local experiments only. |
 | `IMAP_HOST` / `IMAP_PORT` | – / `993` | Fallback host/port for unknown domains (per-account `imapHost` and domain detection take precedence). |
-| `OTP_RECENCY_SECONDS` | `0` | Max age for a code to count. **0 = disabled** (return newest match regardless of age — prototype default). |
+| `OTP_RECENCY_SECONDS` | `600` | Max age for a code to count. `0` = disabled (testing only). |
 | `FETCH_LIMIT` | `3` | How many matching messages to download per request (the newest N of the search results). |
 | `WARM_CONNECTION_SECONDS` | `120` | How long an idle IMAP connection is kept warm for repeat clicks. |
 | `ACCOUNTS_FILE` / `PROVIDERS_FILE` | `accounts.json` / `providers.json` | Config file paths. |
@@ -282,7 +286,6 @@ the email → click **Get OTP**.
 
 ## Known limitations (intentional for the MVP)
 
-- No auth / rate limiting on the REST API.
 - Credentials stored in a local file (encrypt / use a secrets manager for prod).
 - App passwords / OAuth tokens can be revoked host-side — use `GET /accounts/health`
   to detect dead credentials.
@@ -291,7 +294,6 @@ the email → click **Get OTP**.
 
 ## Next steps toward production
 
-- API authentication + rate limiting.
 - Encrypted credential storage (secrets manager).
 - Alerting on `imap.auth_failed` / `accounts/health` for dead credentials.
 - Optional: lighter fetch (headers + text part) and a small pre-warmed pool.
