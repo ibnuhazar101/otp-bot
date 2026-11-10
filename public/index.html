@@ -102,6 +102,11 @@
       <h1>OTP Retrieval</h1>
       <p class="sub">Pick a mailbox and pull the latest verification code.</p>
 
+      <div class="card" style="margin-bottom: 16px">
+        <label for="apiKey">API key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="Paste your API key" />
+      </div>
+
       <div class="card">
         <form id="form">
           <label for="email">Account email</label>
@@ -136,6 +141,18 @@
     </div>
 
     <script>
+      // API key lives in sessionStorage only (cleared when the tab closes).
+      const apiKeyInput = document.getElementById("apiKey");
+      apiKeyInput.value = sessionStorage.getItem("otpApiKey") || "";
+      apiKeyInput.addEventListener("change", () => {
+        sessionStorage.setItem("otpApiKey", apiKeyInput.value.trim());
+        loadLists();
+      });
+      function apiFetch(url) {
+        const key = (apiKeyInput.value || "").trim();
+        return fetch(url, { headers: key ? { Authorization: "Bearer " + key } : {} });
+      }
+
       const form = document.getElementById("form");
       const emailInput = document.getElementById("email");
       const providerSelect = document.getElementById("provider");
@@ -144,8 +161,12 @@
 
       // Populate the account dropdowns (main lookup + health check).
       const healthEmailSelect = document.getElementById("healthEmail");
-      fetch("/accounts")
-        .then((r) => r.json())
+      function loadLists() {
+        for (const sel of [emailInput, healthEmailSelect, providerSelect]) {
+          while (sel.options.length > 1) sel.remove(1);
+        }
+      apiFetch("/accounts")
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
         .then((d) => {
           for (const email of d.accounts || []) {
             for (const select of [emailInput, healthEmailSelect]) {
@@ -159,8 +180,8 @@
         .catch(() => {});
 
       // Populate the provider dropdown.
-      fetch("/providers")
-        .then((r) => r.json())
+      apiFetch("/providers")
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
         .then((d) => {
           for (const p of d.providers || []) {
             const opt = document.createElement("option");
@@ -170,6 +191,8 @@
           }
         })
         .catch(() => {});
+      }
+      loadLists();
 
       form.addEventListener("submit", (e) => {
         e.preventDefault();
@@ -192,7 +215,7 @@
         const url = "/otp/" + encodeURIComponent(email) + "?provider=" + encodeURIComponent(provider);
 
         try {
-          const res = await fetch(url, { headers: { "X-Requester": "web-ui" } });
+          const res = await apiFetch(url);
           const body = await res.json();
           if (res.ok) {
             showCode(body);
@@ -259,7 +282,7 @@
         healthBtn.textContent = "Checking…";
         healthResult.innerHTML = '<div class="status"><span class="spinner"></span>Checking…</div>';
         try {
-          const res = await fetch("/accounts/" + encodeURIComponent(email) + "/health");
+          const res = await apiFetch("/accounts/" + encodeURIComponent(email) + "/health");
           const a = await res.json();
           if (!res.ok) {
             healthResult.innerHTML = '<div class="err">' + escapeHtml(a.error || "Check failed.") + "</div>";
