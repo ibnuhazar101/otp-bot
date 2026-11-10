@@ -9,7 +9,8 @@
  *                     provider's template, or 404 if none.
  * GET /health      -> liveness check.
  *
- * No auth yet — this is a prototype meant to run on a trusted network only.
+ * Everything except the static UI and /health requires an API key
+ * (`Authorization: Bearer <key>` or `X-API-Key: <key>`). See security.ts.
  */
 
 import { fileURLToPath } from "node:url";
@@ -17,18 +18,41 @@ import { dirname, join } from "node:path";
 import express, { type Request, type Response } from "express";
 import type { OtpFetcher } from "./otpFetcher.js";
 import { log } from "./logger.js";
+import {
+  type ApiKey,
+  TtlCache,
+  authFailureLimiter,
+  globalLimiter,
+  healthLimiter,
+  otpLimiter,
+  requireApiKey,
+} from "./security.js";
+
+const HEALTH_CACHE_MS = 30_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "public");
 
-export function createServer(fetcher: OtpFetcher) {
+export function createServer(fetcher: OtpFetcher, opts: { apiKeys: ApiKey[]; authDisabled?: boolean; trustProxy?: string }) {
   const app = express();
+  app.disable("x-powered-by");
+  // Only `provider` is read from the query string; the simple parser keeps `qs` out of the path.
+  app.set("query parser", "simple");
+  if (opts.trustProxy) {
+    app.set("trust proxy", /^\d+$/.test(opts.trustProxy) ? Number(opts.trustProxy) : opts.trustProxy);
+  }
 
+  app.use(globalLimiter);
   app.use(express.static(PUBLIC_DIR));
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
+
+  // --- everything below requires an API key ---
+  if (!opts.authDisabled) {
+    app.use(authFailureLimiter, requireApiKey(opts.apiKeys));
+  }
 
   app.get("/accounts", (_req: Request, res: Response) => {
     res.json({ accounts: fetcher.listAccounts() });
@@ -38,9 +62,12 @@ export function createServer(fetcher: OtpFetcher) {
     res.json({ providers: fetcher.listProviders() });
   });
 
-  app.get("/accounts/health", async (_req: Request, res: Response) => {
+  const healthAll = new TtlCache<Awaited<ReturnType<OtpFetcher["checkHealth"]>>>(HEALTH_CACHE_MS);
+  const healthOne = new TtlCache<Awaited<ReturnType<OtpFetcher["checkAccount"]>>>(HEALTH_CACHE_MS);
+
+  app.get("/accounts/health", healthLimiter, async (_req: Request, res: Response) => {
     const startedAt = Date.now();
-    const accounts = await fetcher.checkHealth();
+    const accounts = await healthAll.get("all", () => fetcher.checkHealth());
     const summary = {
       total: accounts.length,
       ok: accounts.filter((a) => a.status === "ok").length,
@@ -51,10 +78,10 @@ export function createServer(fetcher: OtpFetcher) {
     res.json({ summary, accounts });
   });
 
-  app.get("/accounts/:email/health", async (req: Request, res: Response) => {
+  app.get("/accounts/:email/health", healthLimiter, async (req: Request, res: Response) => {
     const email = req.params.email;
     const startedAt = Date.now();
-    const health = await fetcher.checkAccount(email);
+    const health = await healthOne.get(email.toLowerCase(), () => fetcher.checkAccount(email));
     if (!health) {
       res.status(404).json({ error: "Account is not configured.", email });
       return;
@@ -63,11 +90,11 @@ export function createServer(fetcher: OtpFetcher) {
     res.json(health);
   });
 
-  app.get("/otp/:email", async (req: Request, res: Response) => {
+  app.get("/otp/:email", otpLimiter, async (req: Request, res: Response) => {
     const email = req.params.email;
     const provider = typeof req.query.provider === "string" ? req.query.provider.trim() : "";
-    // Placeholder for real requester identity (API key, user id, etc.).
-    const requester = req.get("x-requester") ?? req.ip ?? "unknown";
+    // Identity comes from the authenticated key, not from a client-supplied header.
+    const requester = req.apiKeyId ?? req.ip ?? "unknown";
     const startedAt = Date.now();
 
     if (!provider) {

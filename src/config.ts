@@ -14,6 +14,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { log } from "./logger.js";
+import { type ApiKey, loadApiKeys } from "./security.js";
 
 /** Known domain -> IMAP host, so common providers need no explicit host. */
 const DOMAIN_IMAP_HOSTS: Record<string, string> = {
@@ -76,6 +77,9 @@ export interface ResolvedProvider {
 }
 
 export interface AppConfig {
+  apiKeys: ApiKey[];
+  authDisabled: boolean;
+  trustProxy?: string;
   serverHost: string;
   serverPort: number;
   recencyMs: number;
@@ -261,11 +265,28 @@ export function loadConfig(): AppConfig {
   const providers = loadProviders(providersPath);
   if (providers.length === 0) throw new Error(`No providers configured in ${providersPath}.`);
 
+  const apiKeys = loadApiKeys();
+  const authDisabled = process.env.AUTH_DISABLED === "true";
+  if (apiKeys.length === 0 && !authDisabled) {
+    throw new Error(
+      "No API key configured. Set API_KEY (or comma-separated API_KEYS) in .env — e.g. `openssl rand -hex 32`. " +
+        "For local experiments only, AUTH_DISABLED=true turns authentication off.",
+    );
+  }
+  const serverHost = process.env.HOST?.trim() || "127.0.0.1";
+  if (authDisabled) {
+    log.warn("auth.disabled", { host: serverHost, note: "AUTH_DISABLED=true — anyone who can reach this port can read OTPs" });
+  }
+
   const config: AppConfig = {
-    serverHost: process.env.HOST ?? "0.0.0.0",
+    apiKeys,
+    authDisabled,
+    trustProxy: process.env.TRUST_PROXY?.trim() || undefined,
+    serverHost,
     serverPort: requireEnvInt("PORT", 3000),
-    // Prototype: recency disabled (0) so old test emails still resolve.
-    recencyMs: requireEnvInt("OTP_RECENCY_SECONDS", 0) * 1000,
+    // Default 10 min so a stale code is never returned as if it were fresh.
+    // Set OTP_RECENCY_SECONDS=0 to explicitly disable (prototype / testing only).
+    recencyMs: requireEnvInt("OTP_RECENCY_SECONDS", 600) * 1000,
     fetchLimit: requireEnvInt("FETCH_LIMIT", 10),
     warmConnectionMs: requireEnvInt("WARM_CONNECTION_SECONDS", 30) * 1000,
     accounts,
@@ -279,6 +300,7 @@ export function loadConfig(): AppConfig {
     authTypes: accounts.map((a) => a.auth.type).join(","),
     providers: providers.map((p) => p.name).join(","),
     recencySeconds: config.recencyMs / 1000,
+    apiKeys: apiKeys.length,
   });
 
   return config;

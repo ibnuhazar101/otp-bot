@@ -14,7 +14,11 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   const fetcher = new OtpFetcher(config);
-  const app = createServer(fetcher);
+  const app = createServer(fetcher, {
+    apiKeys: config.apiKeys,
+    authDisabled: config.authDisabled,
+    trustProxy: config.trustProxy,
+  });
 
   const server = app.listen(config.serverPort, config.serverHost, () => {
     log.info("server.listening", { host: config.serverHost, port: config.serverPort });
